@@ -203,8 +203,8 @@ Edit `config.yaml` to customize how Goethe works:
 
 # Audio Settings
 audio:
-  padding_before: 0.5    # Add 0.5s before each sentence (natural sound)
-  padding_after: 0.5     # Add 0.5s after each sentence
+  padding_before: 0.03    # Add 0.03s before each sentence (natural sound)
+  padding_after: 0.03     # Add 0.03s after each sentence
   bitrate: 192           # MP3 quality: 128, 192, 256
 
 # Speech Recognition
