@@ -1,9 +1,16 @@
-Janusz, erzähle uns etwas aus deinem Alltag
-was dich glücklich macht
-Ja, aber es gibt so vieles
-vieles
-mein Briefkover sind ein Kunstwerk
-ich baste vorher
-eine Stunde lang
-an dem Briefpapier
-am Briefkover
+# German Sentences to Search
+# Add one sentence per line
+
+Ich heiße
+Wie heißt du
+Ich
+du
+Mein Name ist
+ist
+Mein
+Woher kommst du?
+Woher
+Ich komme aus
+Ich wohne in Berlin
+Hobby
+malen

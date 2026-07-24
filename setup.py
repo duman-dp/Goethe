@@ -9,10 +9,9 @@ from pathlib import Path
 from modules.setup import ProjectSetup
 
 def main():
-    """Run full setup"""
     print()
     print("  " + "=" * 68)
-    print("  " + "  🚀  German Sentence Audio Extractor - Setup")
+    print("  " + "  🚀  Goethe - German Sentence Audio Extractor Setup")
     print("  " + "=" * 68)
     print()
     
