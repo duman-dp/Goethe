@@ -8,23 +8,56 @@
 
 Goethe is a tool that helps you learn German by extracting specific sentences from your videos and saving them as MP3 files.
 
-**The Problem**  
-You have hours of German learning videos. You want to practice specific sentences, but you don't want to watch the whole video again just to hear one sentence.
+**The Problem**
 
-**The Solution**  
-Goethe finds the sentences you want in your videos and cuts them into individual MP3 files. You get a personal audio library organized by sentence!
+I started learning German and wanted to use Anki for vocabulary practice. Anki is great for learning with audio, but I had a problem:
+
+```
+📹 German learning videos (hours of content)
+        ↓
+✂️ I needed to cut specific sentences
+        ↓
+🎧 Convert them to MP3 files
+        ↓
+📱 Add them to Anki for practice
+        ↓
+⏰ This took HOURS of manual work!
+```
+
+Every time I wanted to add a new sentence to Anki:
+- I had to find the exact position in the video
+- Cut the audio manually
+- Convert it to MP3
+- Save it with the right name
+- Add it to Anki
+
+This was wasting my study time. I wanted to learn German, not become a video editor!
+
+**The Solution**
+
+So I built Goethe to do all this work automatically:
 
 ```
 📹 German Lesson (30 min)
         ↓
-🔍 Search for: "Ich habe keine Zeit"
+🔍 You write: "Ich habe keine Zeit" in sentences.txt
         ↓
-✂️ Cut audio at 2:15 - 2:18
+🤖 Goethe finds it in the video (2:15 - 2:18)
         ↓
-🎵 Ich_habe_keine_Zeit.mp3 (3 seconds)
+✂️ Automatically cuts the audio
         ↓
-📱 Listen anytime, anywhere!
+🎵 Creates: Ich_habe_keine_Zeit.mp3 (3 seconds)
+        ↓
+📱 Ready to add to Anki in seconds!
 ```
+
+**Now I can:**
+- ✅ Learn German instead of editing videos
+- ✅ Build my Anki audio library quickly
+- ✅ Practice specific sentences anytime
+- ✅ Save hours of manual work
+
+If you're learning German and using Anki, this tool is for you! 🎧
 
 ---
 
