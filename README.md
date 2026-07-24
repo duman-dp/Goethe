@@ -143,16 +143,6 @@ nano sentences.txt
 python3 main.py
 ```
 
-### Step 7: Listen to Your MP3s
-
-```bash
-# List your MP3 files
-ls output/mp3/
-
-# Play the first one
-ffplay output/mp3/*/*.mp3
-```
-
 ---
 
 ## 📁 Project Structure
@@ -209,7 +199,7 @@ audio:
 
 # Speech Recognition
 speech:
-  model_size: tiny       # tiny (fastest) | small | medium | large (best)
+  model_size: medium       # tiny | small | medium | large (best)
   language: German       # Language to transcribe
   device: cpu            # cpu or cuda (GPU)
   quiet: true            # Less output in terminal
@@ -231,8 +221,8 @@ paths:
 | Model | Speed | Accuracy | Memory | Best For |
 |-------|-------|----------|--------|----------|
 | **tiny** | 🚀 Fastest | 70% | ~1 GB | Testing, short videos |
-| **small** | ⚡ Fast | 85% | ~2 GB | Daily use (recommended) |
-| **medium** | 🐢 Medium | 92% | ~5 GB | Better accuracy |
+| **small** | ⚡ Fast | 85% | ~2 GB | Daily use  |
+| **medium** | 🐢 Medium | 92% | ~5 GB | Better accuracy (recommended) |
 | **large** | 🐌 Slow | 95% | ~10 GB | Best quality (if you have RAM) |
 
 ---
@@ -363,11 +353,11 @@ Yes! Change `language: German` to:
 
 ### Where do I get German videos?
 
-- **YouTube**: Download with `yt-dlp`
-- **Deutsche Welle**: Free German lessons
-- **Easy German**: YouTube channel
-- **Your own recordings**: Record yourself speaking
-- **German movies/TV**: With subtitles
+- **YouTube**
+- **Deutsche Welle**
+- **Easy German**
+- **Your own recordings**
+- **German movies/TV**
 
 ### My laptop is getting hot!
 
@@ -497,37 +487,6 @@ ffplay output/mp3/*/*.mp3
 
 ---
 
-## 📤 Sharing Your MP3 Library
-
-### To your phone
-
-```bash
-# Via USB
-cp -r output/mp3/ /media/phone/Music/German/
-
-# Via cloud
-rsync -av output/mp3/ ~/Dropbox/German_Library/
-```
-
-### To friends
-
-```bash
-# Create ZIP archive
-zip -r german_mp3_library.zip output/mp3/
-
-# Share the file
-```
-
-### To other devices
-
-```bash
-# Via SSH
-scp -r output/mp3/ user@192.168.1.100:~/Music/German/
-
-# Via USB drive
-cp -r output/mp3/ /media/usb/German_MP3s/
-```
-
 ---
 
 ## 🤝 Contributing
@@ -559,7 +518,6 @@ MIT License — Free to use, modify, and share!
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — Speech recognition
 - [FFmpeg](https://ffmpeg.org/) — Audio extraction
 - [Hugging Face](https://huggingface.co/) — Model hosting
-- [Johann Wolfgang von Goethe](https://en.wikipedia.org/wiki/Johann_Wolfgang_von_Goethe) — Inspiration
 
 ---
 
