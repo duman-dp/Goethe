@@ -1,0 +1,31 @@
+# Audio settings
+audio:
+  padding_before: 0.5
+  padding_after: 0.5
+  output_format: mp3
+  bitrate: 192
+
+# Paths
+paths:
+  videos: ./videos
+  transcripts: ./transcripts
+  output: ./output
+  logs: ./logs
+
+# Speech recognition
+speech:
+  language: German
+  model_size: tiny
+  device: cpu
+  quiet: true
+
+# Matching
+matching:
+  fuzzy_threshold: 60
+
+# Video formats
+video_formats:
+  - mp4
+  - mkv
+  - avi
+  - mov
