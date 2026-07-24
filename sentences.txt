@@ -1,6 +1,3 @@
-# German Sentences to Search
-# Add one sentence per line
-
 Ich heiße
 Wie heißt du
 Ich

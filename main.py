@@ -122,59 +122,31 @@ def main():
         sentences = matcher.load_sentences(sentences_file)
         
         if sentences:
-            logger.info(f"Searching for {len(sentences)} sentences")
-            
             transcript_files = list(folders['transcripts'].glob("*.json"))
-            all_matches = []
             
-            for transcript_file in transcript_files:
-                logger.info(f"📄 {transcript_file.name}")
-                matches = matcher.find_matches(transcript_file, sentences)
-                all_matches.extend(matches)
-                
-                matches_file = folders['output'] / f"{transcript_file.stem}_matches.json"
-                matcher.save_matches(matches, matches_file)
-            
-            if all_matches:
-                logger.success(f"Found {len(all_matches)} matches!")
-                print()
-                print("  " + "┌" + "─" * 66 + "┐")
-                print(f"  │ {Colors.BOLD}📝 Matches Found{Colors.RESET}".ljust(68) + "│")
-                print("  " + "├" + "─" * 66 + "┤")
-                
-                for i, match in enumerate(all_matches, 1):
-                    sentence = match['sentence']
-                    if len(sentence) > 45:
-                        sentence = sentence[:42] + "..."
-                    
-                    if match['score'] >= 90:
-                        emoji = "🌟"
-                        color = Colors.GREEN
-                    elif match['score'] >= 70:
-                        emoji = "📘"
-                        color = Colors.YELLOW
-                    else:
-                        emoji = "📄"
-                        color = Colors.DIM
-                    
-                    print(f"  │  {color}{emoji} {i:2d}. {sentence}{Colors.RESET}")
-                    print(f"  │     {Colors.DIM}⏱️  {match['start']:.1f}s  •  Score: {match['score']}%{Colors.RESET}")
-                    
-                    if i == 5 and len(all_matches) > 5:
-                        print(f"  │  {Colors.DIM}... and {len(all_matches) - 5} more{Colors.RESET}")
-                        break
-                
-                print("  " + "└" + "─" * 66 + "┘")
+            if not transcript_files:
+                logger.warning("No transcript files found")
+                logger.info("Run Phase 2 first to create transcripts")
             else:
-                logger.warning("No matches found")
-                logger.info("Try different sentences or lower the threshold in config.yaml")
+                logger.info(f"Found {len(transcript_files)} transcript(s)")
+                logger.info(f"Searching for {len(sentences)} words/phrases across ALL videos")
+                print()
+                
+                all_matches = matcher.find_matches(transcript_files, sentences)
+                
+                if all_matches:
+                    matches_file = folders['output'] / "all_matches.json"
+                    matcher.save_matches(all_matches, matches_file)
+                    matcher.print_summary(all_matches)
+                else:
+                    logger.warning("No matches found across any video")
     
     # === PHASE 4: Audio Extraction ===
     logger.step("Audio Extraction", "🎵")
     
-    match_files = list(folders['output'].glob("*_matches.json"))
+    match_file = folders['output'] / "all_matches.json"
     
-    if match_files:
+    if match_file.exists():
         extractor = AudioExtractor(config)
         mp3_folder = folders['output'] / "mp3"
         
@@ -191,11 +163,11 @@ def main():
             print(f"  │ {Colors.BOLD}🎵 MP3 Files Created{Colors.RESET}".ljust(68) + "│")
             print("  " + "├" + "─" * 66 + "┤")
             
-            for i, mp3 in enumerate(extracted[:5], 1):
+            for i, mp3 in enumerate(extracted[:10], 1):
                 print(f"  │  {i}. {Colors.CYAN}{mp3.parent.name}{Colors.RESET}/{mp3.name}")
             
-            if len(extracted) > 5:
-                print(f"  │  {Colors.DIM}... and {len(extracted) - 5} more{Colors.RESET}")
+            if len(extracted) > 10:
+                print(f"  │  {Colors.DIM}... and {len(extracted) - 10} more{Colors.RESET}")
             
             print("  " + "└" + "─" * 66 + "┘")
             print()
@@ -204,7 +176,7 @@ def main():
         else:
             logger.warning("No MP3 files created")
     else:
-        logger.warning("No match files found - run Phase 3 first")
+        logger.warning("No match file found - run Phase 3 first")
     
     # === Final Summary ===
     logger.divider()
@@ -212,8 +184,6 @@ def main():
     summary_items = {
         "🎬 Videos": len(video_files),
         "📝 Transcripts": len(list(folders['transcripts'].glob("*.json"))),
-        "🔎 Matches": len(all_matches) if 'all_matches' in locals() else 0,
-        "🎵 MP3 Files": len(extracted) if 'extracted' in locals() else 0,
         "📁 Output": str(folders['output'] / "mp3")
     }
     

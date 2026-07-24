@@ -55,8 +55,8 @@ class ProjectSetup:
 
 # Audio settings
 audio:
-  padding_before: 0.5
-  padding_after: 0.5
+  padding_before: 0.03
+  padding_after: 0.03
   output_format: mp3
   bitrate: 192
 
@@ -72,12 +72,11 @@ speech:
   language: German
   model_size: tiny
   device: cpu
-  quiet: true
+  quiet: false
 
 # Matching
 matching:
-  fuzzy_threshold: 85
-  exact_match: false
+  fuzzy_threshold: 60
 
 # Video formats
 video_formats:
@@ -96,16 +95,23 @@ video_formats:
         return config_path
     
     def _create_sentences(self):
-        sentences_content = """# German Sentences to Search
-# Add one sentence per line
+        sentences_content = """# German Words and Phrases to Search
+# Mix single words AND phrases!
+# Add one per line
 
-Ich habe keine Zeit.
-Wie geht es dir?
-Das ist kein Problem.
-Guten Morgen!
-Hallo, wie heißt du?
-Ich liebe Deutsch.
-Wo ist der Bahnhof?
+# Single words (extract just the word)
+ich
+du
+heiße
+wohne
+hobby
+
+# Phrases (extract just the phrase)
+Ich heiße
+Wie heißt du
+Woher kommst du
+Ich komme aus
+Ich wohne in
 """
         sentences_path = self.project_root / 'sentences.txt'
         if not sentences_path.exists():

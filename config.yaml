@@ -1,23 +1,32 @@
+# Goethe - German Sentence Audio Extractor
+# Configuration File
+
+# Audio settings
 audio:
   padding_before: 0.03
   padding_after: 0.03
+  output_format: mp3
   bitrate: 192
 
+# Paths
 paths:
   videos: ./videos
   transcripts: ./transcripts
   output: ./output
   logs: ./logs
 
+# Speech recognition
 speech:
   language: German
-  model_size: tiny
+  model_size: medium
   device: cpu
   quiet: false
 
+# Matching
 matching:
-  fuzzy_threshold: 60    # Fallback if exact not found
+  fuzzy_threshold: 60
 
+# Video formats
 video_formats:
   - mp4
   - mkv
