@@ -2,27 +2,20 @@
 """
 Quick Setup Script for New Users
 Run this first: python3 setup.py
+
+Creates the project folders, config.yaml and sentences.txt (only if they are
+missing) and checks that Python, ffmpeg and the required packages are available.
 """
 
 import sys
-from pathlib import Path
+
 from modules.setup import ProjectSetup
 
-def main():
-    print()
-    print("  " + "=" * 68)
-    print("  " + "  🚀  Goethe - German Sentence Audio Extractor Setup")
-    print("  " + "=" * 68)
-    print()
-    
-    setup = ProjectSetup()
-    setup.run_full_setup()
-    
-    print()
-    print("  " + "=" * 68)
-    print("  " + "  ✨  Setup complete! Run: python3 main.py")
-    print("  " + "=" * 68)
-    print()
+
+def main() -> int:
+    ready = ProjectSetup().run_full_setup()
+    return 0 if ready else 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

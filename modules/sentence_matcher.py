@@ -1,231 +1,376 @@
 #!/usr/bin/env python3
 """
 Sentence Matcher Module
-EXACT word/phrase extraction with word-level timestamps
-Supports multiple videos and tracks ALL occurrences
+Finds words and phrases in transcripts and returns their exact word-level timestamps.
+
+How matching works
+------------------
+* Each transcript is flattened into ONE stream of words with timestamps, so a
+  phrase that Whisper split across two segments is still found.
+* Words are compared after normalization: Unicode NFKC, case-folded, and with
+  everything except letters and digits removed (punctuation, spaces). So
+  "Heißt," matches "heisst", and umlauts are compared correctly.
+* Whole words only: the term "ich" does not match inside "mich".
+* Matches whose words are more than MAX_WORD_GAP seconds apart are rejected
+  (that is not one spoken phrase, only the same words far apart).
+* Exact matching is the default. If matching.fuzzy_threshold < 100 and a term
+  has NO exact match in a video, a fuzzy fallback (difflib similarity) looks for
+  similar word sequences in that video. Fuzzy matching needs at least
+  MIN_FUZZY_CHARS characters in the term.
+* Languages written without spaces between words (Chinese) are matched
+  character by character; a clip then covers the whole words that contain the
+  matched characters.
 """
 
+from __future__ import annotations
+
+import hashlib
 import json
-import re
+import os
+import unicodedata
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
-from fuzzywuzzy import fuzz
-from tqdm import tqdm
+from typing import Any, Dict, List, NamedTuple, Sequence, Tuple
+
+from modules.beautiful_logger import logger
+from modules.errors import SentenceError, TranscriptError
+
+CHAR_LEVEL_LANGUAGES = frozenset({"zh"})
+MIN_FUZZY_CHARS = 4
+MAX_WORD_GAP = 1.5  # seconds between two neighbouring words of one phrase
+MAX_CONTEXT_CHARS = 200
+MATCHES_FORMAT_VERSION = 2
+
+
+def normalize_token(text: str) -> str:
+    """Lower-case a word and drop everything that is not a letter or digit."""
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    return "".join(char for char in folded if char.isalnum())
+
+
+@dataclass(frozen=True)
+class SearchTerm:
+    text: str  # as written in sentences.txt
+    tokens: Tuple[str, ...]  # normalized tokens used for matching
+
+
+@dataclass
+class Match:
+    id: str
+    term: str
+    video: str  # video file name without extension
+    video_path: str  # exact path of the source video
+    start: float
+    end: float
+    matched_text: str
+    context: str
+    score: float
+    exact: bool
+    word_count: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+class _Unit(NamedTuple):
+    token: str
+    start: float
+    end: float
+    word_index: int
+    segment_index: int
+
+
+def make_match_id(video: str, term_key: str, start: float, end: float) -> str:
+    """Stable ID: the same match in the same video always gets the same ID."""
+    raw = f"{video}|{term_key}|{round(start * 1000)}|{round(end * 1000)}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
+
+
+def load_sentences(path: Path) -> List[str]:
+    """Read sentences.txt: one term per line; empty lines and lines starting with # are ignored."""
+    path = Path(path)
+    if not path.is_file():
+        raise SentenceError(
+            f"{path.name} not found. Create it in the project folder with one German "
+            "word or phrase per line."
+        )
+    try:
+        content = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise SentenceError(f"{path.name} must be saved as UTF-8 text: {exc}") from exc
+    except OSError as exc:
+        raise SentenceError(f"Cannot read {path}: {exc}") from exc
+
+    sentences = [
+        line.strip()
+        for line in content.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not sentences:
+        raise SentenceError(
+            f"{path.name} is empty. Add one word or phrase per line "
+            "(lines starting with # are comments)."
+        )
+    return sentences
+
+
+def load_transcript(path: Path) -> Dict[str, Any]:
+    """Read a transcript JSON file. Raises TranscriptError if it is corrupted."""
+    path = Path(path)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except json.JSONDecodeError as exc:
+        raise TranscriptError(
+            f"Transcript {path.name} is corrupted ({exc}). Delete it to transcribe the video again."
+        ) from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise TranscriptError(f"Cannot read transcript {path}: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("segments"), list):
+        raise TranscriptError(
+            f"Transcript {path.name} has an unexpected format. Delete it to transcribe the video again."
+        )
+    return data
+
+
+def save_matches(matches: Sequence[Match], path: Path, language: str) -> Path:
+    """Write all matches to a JSON file (atomically)."""
+    path = Path(path)
+    temp_path = path.with_name(path.name + ".tmp")
+    payload = {
+        "version": MATCHES_FORMAT_VERSION,
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "language": language,
+        "total_matches": len(matches),
+        "matches": [match.to_dict() for match in matches],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+    os.replace(temp_path, path)
+    return path
+
 
 class SentenceMatcher:
-    def __init__(self, config):
-        self.config = config
-        self.threshold = config.get('matching', {}).get('fuzzy_threshold', 60)
-        self.all_matches = []
-        
-        print(f"🔍 Sentence matcher initialized")
-        print(f"   Mode: EXACT word/phrase extraction (ALL occurrences)")
-        print(f"   Threshold: {self.threshold}%")
-    
-    def clean_text(self, text):
-        text = ' '.join(text.split())
-        text = re.sub(r'[.,!?;:]', '', text)
-        text = text.lower()
-        text = ' '.join(text.split())
-        return text
-    
-    def load_sentences(self, sentences_file):
-        if not Path(sentences_file).exists():
-            print(f"❌ Sentences file not found: {sentences_file}")
-            return []
-        
-        with open(sentences_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        sentences = [s.strip() for s in content.split('\n') if s.strip() and not s.strip().startswith('#')]
-        print(f"📄 Loaded {len(sentences)} sentences from {sentences_file}")
-        return sentences
-    
-    def find_matches_in_video(self, transcript_file, sentences, video_name):
-        """Find matches in a single video"""
-        print(f"🔎 Searching in: {video_name}")
-        print(f"📁 Using transcript: {Path(transcript_file).name}")
-        print("-" * 50)
-        
-        with open(transcript_file, 'r', encoding='utf-8') as f:
-            transcript = json.load(f)
-        
-        segments = transcript.get('segments', [])
-        video_matches = []
-        
-        for search_term in tqdm(sentences, desc=f"Searching in {video_name[:20]}..."):
-            search_clean = self.clean_text(search_term)
-            search_words = search_clean.split()
-            word_count = len(search_words)
-            is_single_word = (word_count == 1)
-            
-            term_matches = []
-            
-            for segment in segments:
-                segment_clean = self.clean_text(segment['text'])
-                segment_words = segment.get('words', [])
-                
-                if is_single_word:
-                    word_lower = search_clean
-                    
-                    for word_data in segment_words:
-                        word_text = self.clean_text(word_data.get('word', ''))
-                        if word_text == word_lower:
-                            term_matches.append({
-                                'sentence': search_term,
-                                'match_text': segment['text'],
-                                'score': 100,
-                                'start': word_data['start'],
-                                'end': word_data['end'],
-                                'matched_word': word_data['word'],
-                                'is_word': True,
-                                'exact': True,
-                                'video': video_name,
-                                'occurrence': len(term_matches) + 1
-                            })
-                else:
-                    phrase_lower = ' '.join(search_words)
-                    segment_text_lower = segment_clean
-                    
-                    if phrase_lower in segment_text_lower:
-                        for i, word_data in enumerate(segment_words):
-                            word_text = self.clean_text(word_data.get('word', ''))
-                            if word_text == search_words[0]:
-                                match_count = 0
-                                for j in range(len(search_words)):
-                                    if i + j < len(segment_words):
-                                        w_text = self.clean_text(segment_words[i + j].get('word', ''))
-                                        if w_text == search_words[j]:
-                                            match_count += 1
-                                        else:
-                                            break
-                                
-                                if match_count == len(search_words):
-                                    start_word = segment_words[i]
-                                    end_word = segment_words[i + len(search_words) - 1]
-                                    phrase_text = ' '.join([w.get('word', '') for w in segment_words[i:i+len(search_words)]])
-                                    
-                                    term_matches.append({
-                                        'sentence': search_term,
-                                        'match_text': segment['text'],
-                                        'score': 100,
-                                        'start': start_word['start'],
-                                        'end': end_word['end'],
-                                        'matched_word': phrase_text,
-                                        'is_word': False,
-                                        'exact': True,
-                                        'video': video_name,
-                                        'occurrence': len(term_matches) + 1
-                                    })
-            
-            if term_matches:
-                print(f"   ✅ Found {len(term_matches)} occurrences of '{search_term}' in {video_name}")
-                video_matches.extend(term_matches)
-            else:
-                print(f"   ❌ No occurrences of '{search_term}' in {video_name}")
-        
-        return video_matches
-    
-    def find_matches(self, transcript_files, sentences):
-        print()
-        print("=" * 60)
-        print("🔍 SEARCHING ACROSS ALL VIDEOS")
-        print("=" * 60)
-        print()
-        
-        all_matches = []
-        total_found = {}
-        
-        for transcript_file in transcript_files:
-            video_name = transcript_file.stem
-            matches = self.find_matches_in_video(transcript_file, sentences, video_name)
-            all_matches.extend(matches)
-            
-            for match in matches:
-                term = match['sentence']
-                if term not in total_found:
-                    total_found[term] = 0
-                total_found[term] += 1
-        
-        self.all_matches = all_matches
-        
-        print()
-        print("=" * 60)
-        print("📊 TOTAL OCCURRENCES ACROSS ALL VIDEOS")
-        print("=" * 60)
-        for term, count in total_found.items():
-            print(f"   {term}: {count} occurrence(s)")
-        print()
-        print(f"✅ Found {len(all_matches)} total matches across all videos")
-        
-        return all_matches
-    
-    def save_matches(self, matches, output_file):
-        output_path = Path(output_file)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        output_data = {
-            'total_matches': len(matches),
-            'matches': matches
-        }
-        
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(output_data, f, ensure_ascii=False, indent=2)
-        
-        print(f"💾 Matches saved: {output_path}")
-        return output_path
-    
-    def print_summary(self, matches):
-        print()
-        print("=" * 60)
-        print("📊 MATCH SUMMARY")
-        print("=" * 60)
-        
-        if not matches:
-            print("❌ No matches found!")
-            return
-        
-        by_term = {}
-        by_video = {}
-        
-        for match in matches:
-            term = match['sentence']
-            video = match.get('video', 'Unknown')
-            
-            if term not in by_term:
-                by_term[term] = []
-            by_term[term].append(match)
-            
-            if video not in by_video:
-                by_video[video] = []
-            by_video[video].append(match)
-        
-        print(f"✅ Total matches: {len(matches)}")
-        print()
-        
-        print("📝 By search term:")
-        print("-" * 40)
-        for term, term_matches in sorted(by_term.items(), key=lambda x: len(x[1]), reverse=True):
-            print(f"   {term}: {len(term_matches)} occurrence(s)")
-        print()
-        
-        print("📁 By video:")
-        print("-" * 40)
-        for video, video_matches in by_video.items():
-            print(f"   {video[:40]}: {len(video_matches)} occurrence(s)")
-        print()
-        
-        print("📝 First 10 matches:")
-        print("-" * 40)
-        for i, match in enumerate(matches[:10], 1):
-            if match.get('is_word', False):
-                print(f"   {i}. '{match['sentence']}' → '{match['matched_word']}'")
-            else:
-                print(f"   {i}. '{match['sentence']}' → '{match['matched_word']}'")
-            print(f"      ⏱️  {match['start']:.2f}s - {match['end']:.2f}s")
-            print(f"      📁 {match.get('video', 'Unknown')}")
-        if len(matches) > 10:
-            print(f"   ... and {len(matches) - 10} more")
+    def __init__(
+        self,
+        language_code: str = "de",
+        fuzzy_threshold: float = 100.0,
+        max_word_gap: float = MAX_WORD_GAP,
+    ) -> None:
+        self.language_code = language_code
+        self.char_level = language_code in CHAR_LEVEL_LANGUAGES
+        self.fuzzy_threshold = float(fuzzy_threshold)
+        self.max_word_gap = max_word_gap
 
-if __name__ == "__main__":
-    print("🧪 Testing sentence matcher...")
-    print("✅ Module ready!")
+    @property
+    def fuzzy_enabled(self) -> bool:
+        return self.fuzzy_threshold < 100
+
+    # ------------------------------------------------------------------ search terms
+    def tokenize(self, text: str) -> List[str]:
+        tokens: List[str] = []
+        for piece in text.split():
+            normalized = normalize_token(piece)
+            if not normalized:
+                continue
+            if self.char_level:
+                tokens.extend(normalized)
+            else:
+                tokens.append(normalized)
+        return tokens
+
+    def prepare_terms(self, sentences: Sequence[str]) -> List[SearchTerm]:
+        """Turn lines from sentences.txt into search terms (duplicates are dropped)."""
+        terms: List[SearchTerm] = []
+        seen: Dict[Tuple[str, ...], str] = {}
+        for text in sentences:
+            tokens = tuple(self.tokenize(text))
+            if not tokens:
+                logger.warning(f"Ignoring search term without letters or digits: {text!r}")
+                continue
+            if tokens in seen:
+                logger.warning(f"Duplicate search term ignored: {text!r} (same as {seen[tokens]!r})")
+                continue
+            seen[tokens] = text
+            terms.append(SearchTerm(text=text, tokens=tokens))
+        if not terms:
+            raise SentenceError("sentences.txt contains no usable search terms.")
+        return terms
+
+    # ------------------------------------------------------------------ transcript -> word stream
+    def _build_stream(
+        self, transcript: Dict[str, Any]
+    ) -> Tuple[List[_Unit], List[Tuple[str, int]], List[str]]:
+        segments = transcript.get("segments")
+        if not isinstance(segments, list):
+            raise TranscriptError("Transcript has no 'segments' list.")
+
+        units: List[_Unit] = []
+        raw_words: List[Tuple[str, int]] = []
+        segment_texts: List[str] = []
+        skipped = 0
+        for segment_index, segment in enumerate(segments):
+            if not isinstance(segment, dict):
+                segment_texts.append("")
+                continue
+            segment_texts.append(str(segment.get("text", "")).strip())
+            for word in segment.get("words") or []:
+                try:
+                    start = float(word["start"])
+                    end = float(word["end"])
+                    raw = str(word["word"])
+                except (KeyError, TypeError, ValueError):
+                    skipped += 1
+                    continue
+                normalized = normalize_token(raw)
+                if not normalized:
+                    continue  # pure punctuation
+                word_index = len(raw_words)
+                raw_words.append((raw, segment_index))
+                pieces = list(normalized) if self.char_level else [normalized]
+                for piece in pieces:
+                    units.append(_Unit(piece, start, end, word_index, segment_index))
+        if skipped:
+            logger.warning(f"Ignored {skipped} malformed word entries in a transcript")
+        return units, raw_words, segment_texts
+
+    def _gap_ok(self, units: Sequence[_Unit], pos: int, length: int) -> bool:
+        for index in range(pos + 1, pos + length):
+            if units[index].start - units[index - 1].end > self.max_word_gap:
+                return False
+        return True
+
+    # ------------------------------------------------------------------ matching
+    def _exact_spans(
+        self,
+        term: SearchTerm,
+        tokens: Sequence[str],
+        units: Sequence[_Unit],
+        index: Dict[str, List[int]],
+    ) -> List[Tuple[int, int, float]]:
+        needle = list(term.tokens)
+        length = len(needle)
+        spans: List[Tuple[int, int, float]] = []
+        next_free = 0
+        for pos in index.get(needle[0], ()):
+            if pos < next_free:
+                continue  # overlaps the previous occurrence of the same term
+            if pos + length > len(tokens):
+                break
+            if list(tokens[pos : pos + length]) == needle and self._gap_ok(units, pos, length):
+                spans.append((pos, length, 100.0))
+                next_free = pos + length
+        return spans
+
+    def _fuzzy_spans(
+        self, term: SearchTerm, tokens: Sequence[str], units: Sequence[_Unit]
+    ) -> List[Tuple[int, int, float]]:
+        separator = "" if self.char_level else " "
+        term_text = separator.join(term.tokens)
+        if len(term_text.replace(" ", "")) < MIN_FUZZY_CHARS:
+            return []
+
+        threshold = self.fuzzy_threshold / 100.0
+        matcher = SequenceMatcher(None, autojunk=False)
+        matcher.set_seq2(term_text)
+        length = len(term.tokens)
+        candidates: List[Tuple[float, int, int]] = []
+        for size in sorted({max(1, length - 1), length, length + 1}):
+            for pos in range(0, len(tokens) - size + 1):
+                if not self._gap_ok(units, pos, size):
+                    continue
+                matcher.set_seq1(separator.join(tokens[pos : pos + size]))
+                if matcher.real_quick_ratio() < threshold or matcher.quick_ratio() < threshold:
+                    continue
+                ratio = matcher.ratio()
+                if ratio >= threshold:
+                    candidates.append((ratio, pos, size))
+
+        candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+        used = set()
+        spans: List[Tuple[int, int, float]] = []
+        for ratio, pos, size in candidates:
+            positions = range(pos, pos + size)
+            if any(p in used for p in positions):
+                continue
+            used.update(positions)
+            spans.append((pos, size, round(ratio * 100, 1)))
+        spans.sort(key=lambda item: item[0])
+        return spans
+
+    def _build_match(
+        self,
+        term: SearchTerm,
+        video_stem: str,
+        video_path: Path,
+        units: Sequence[_Unit],
+        raw_words: Sequence[Tuple[str, int]],
+        segment_texts: Sequence[str],
+        span: Tuple[int, int, float],
+        exact: bool,
+    ) -> Match:
+        pos, length, score = span
+        first, last = units[pos], units[pos + length - 1]
+        words = raw_words[first.word_index : last.word_index + 1]
+        if self.char_level:
+            matched_text = "".join(raw for raw, _ in words).strip()
+        else:
+            matched_text = " ".join(raw.strip() for raw, _ in words)
+        context = " ".join(
+            text for text in segment_texts[first.segment_index : last.segment_index + 1] if text
+        )
+        if len(context) > MAX_CONTEXT_CHARS:
+            context = context[: MAX_CONTEXT_CHARS - 1] + "…"
+        start = first.start
+        end = max(last.end, start)
+        term_key = " ".join(term.tokens)
+        return Match(
+            id=make_match_id(video_stem, term_key, start, end),
+            term=term.text,
+            video=video_stem,
+            video_path=str(video_path),
+            start=start,
+            end=end,
+            matched_text=matched_text,
+            context=context,
+            score=score,
+            exact=exact,
+            word_count=last.word_index - first.word_index + 1,
+        )
+
+    def find_in_transcript(
+        self,
+        transcript: Dict[str, Any],
+        terms: Sequence[SearchTerm],
+        video_path: Path,
+    ) -> List[Match]:
+        """Find all occurrences of all terms in one transcript. Returns matches grouped by term."""
+        video_path = Path(video_path)
+        video_stem = video_path.stem
+        units, raw_words, segment_texts = self._build_stream(transcript)
+        if not units:
+            return []
+
+        tokens = [unit.token for unit in units]
+        index: Dict[str, List[int]] = defaultdict(list)
+        for pos, token in enumerate(tokens):
+            index[token].append(pos)
+
+        matches: List[Match] = []
+        for term in terms:
+            spans = self._exact_spans(term, tokens, units, index)
+            exact = True
+            if not spans and self.fuzzy_enabled:
+                spans = self._fuzzy_spans(term, tokens, units)
+                exact = False
+            for span in spans:
+                matches.append(
+                    self._build_match(
+                        term, video_stem, video_path, units, raw_words, segment_texts, span, exact
+                    )
+                )
+        return matches

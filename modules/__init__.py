@@ -1,1 +1,1 @@
-# Modules package
+# Goethe modules package

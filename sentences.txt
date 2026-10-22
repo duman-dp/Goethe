@@ -1,3 +1,7 @@
+# German words and phrases to find in your videos.
+# One entry per line. Lines starting with # are ignored.
+# Single words and whole phrases can be mixed.
+
 Ich heiße
 Wie heißt du
 Ich
