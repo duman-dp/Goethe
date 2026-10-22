@@ -1,32 +1,36 @@
 # Goethe - German Sentence Audio Extractor
-# Configuration File
+# Configuration file. The values below are the defaults.
+# Relative paths are relative to the project folder.
 
-# Audio settings
+# Audio settings (MP3 clips)
 audio:
-  padding_before: 0.03
-  padding_after: 0.03
-  output_format: mp3
-  bitrate: 192
+  padding_before: 0.03   # seconds of audio added before each match (0 - 5)
+  padding_after: 0.03    # seconds of audio added after each match (0 - 5)
+  bitrate: 192           # MP3 quality in kbps (32 - 320)
 
-# Paths
+# Folders
 paths:
   videos: ./videos
   transcripts: ./transcripts
-  output: ./output
-  logs: ./logs
+  output: ./output       # MP3 clips are written to <output>/mp3/
+  logs: ./logs           # a log file (goethe.log) is written here
 
-# Speech recognition
+# Speech recognition (faster-whisper)
 speech:
-  language: German
-  model_size: medium
-  device: cpu
-  quiet: false
+  language: German       # German, English, French, Spanish, Italian, Portuguese, Chinese
+                         # (language codes such as de, en, fr, es, it, pt, zh also work)
+  model_size: small      # tiny | base | small | medium | large-v2 | large-v3
+                         # small = good balance for a first run; bigger = slower, more accurate
+  device: cpu            # cpu | cuda (NVIDIA GPU) | auto
+  quiet: false           # true = less output while transcribing
 
 # Matching
 matching:
-  fuzzy_threshold: 60
+  fuzzy_threshold: 100   # 100 = exact matches only (recommended)
+                         # 50 - 99 = if a term is not found exactly in a video,
+                         #           also accept similar-sounding spellings
 
-# Video formats
+# Video file extensions that are processed (not case-sensitive)
 video_formats:
   - mp4
   - mkv

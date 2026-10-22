@@ -1,538 +1,370 @@
 # 📚 Goethe - German Sentence Audio Extractor
 
-**Learn German by building your own audio library from videos!**
+**Build your own Anki audio library from German videos.**
+
+You put German videos in a folder and write down the words and phrases you want to practice. Goethe finds every place where they are spoken and cuts each one out as a small MP3 file.
 
 ---
 
-## 🎯 What is Goethe?
-
-Goethe is a tool that helps you learn German by extracting specific sentences from your videos and saving them as MP3 files.
-
-**The Problem**
-
-I started learning German and wanted to use Anki for vocabulary practice. Anki is great for learning with audio, but I had a problem:
+## 🎯 What it does
 
 ```
-📹 German learning videos (hours of content)
-        ↓
-✂️ I needed to cut specific sentences
-        ↓
-🎧 Convert them to MP3 files
-        ↓
-📱 Add them to Anki for practice
-        ↓
-⏰ This took HOURS of manual work!
+📹 videos/lesson.mp4
+      ↓  faster-whisper (speech recognition, word-level timestamps)
+📝 transcripts/lesson.json
+      ↓  find your words and phrases (sentences.txt)
+🔎 every occurrence, in every video
+      ↓  ffmpeg
+🎵 output/mp3/Ich_heisse/Ich_heisse__lesson__00h02m15s_7d11d715.mp3
 ```
-
-Every time I wanted to add a new sentence to Anki:
-- I had to find the exact position in the video
-- Cut the audio manually
-- Convert it to MP3
-- Save it with the right name
-- Add it to Anki
-
-This was wasting my study time. I wanted to learn German, not become a video editor!
-
-**The Solution**
-
-So I built Goethe to do all this work automatically:
-
-```
-📹 German Lesson (30 min)
-        ↓
-🔍 You write: "Ich habe keine Zeit" in sentences.txt
-        ↓
-🤖 Goethe finds it in the video (2:15 - 2:18)
-        ↓
-✂️ Automatically cuts the audio
-        ↓
-🎵 Creates: Ich_habe_keine_Zeit.mp3 (3 seconds)
-        ↓
-📱 Ready to add to Anki in seconds!
-```
-
-**Now I can:**
-- ✅ Learn German instead of editing videos
-- ✅ Build my Anki audio library quickly
-- ✅ Practice specific sentences anytime
-- ✅ Save hours of manual work
-
-If you're learning German and using Anki, this tool is for you! 🎧
 
 ---
 
-## ✨ Features
+## ✨ Features (all of these are real)
 
-| Feature | Description |
-|---------|-------------|
-| 🎤 **Speech Recognition** | Converts video speech to text with timestamps |
-| 🔍 **Smart Search** | Finds sentences even with small differences (fuzzy matching) |
-| 🎵 **MP3 Extraction** | Creates high-quality audio clips (192 kbps) |
-| 📁 **Organized Output** | MP3 files organized by sentence in individual folders |
-| 🎨 **Beautiful Interface** | Colorful, professional output in your terminal |
-| 🔄 **Resume Support** | Won't reprocess videos you've already done |
-| ⚡ **Fast Processing** | Uses optimized whisper models for speed |
-| 🚀 **Auto-Setup** | Everything created automatically on first run |
-| 🇩🇪 **German Optimized** | Handles ä, ö, ü, ß and German grammar |
+| Feature | How it works |
+|---------|--------------|
+| 🎤 **Speech recognition** | faster-whisper transcribes each video with a timestamp for every word. The language comes from `config.yaml`. |
+| 🔍 **Exact matching** | Finds single words and whole phrases. Case, punctuation and extra spaces do not matter; `ß`/`ss` and umlauts are handled. Only whole words match (`ich` does not match inside `mich`). |
+| 🔗 **Phrases across segments** | Whisper sometimes splits a sentence into two segments. Goethe searches the whole word stream, so these phrases are found too. |
+| 🧩 **Optional fuzzy fallback** | Off by default. See [Matching](#-matching). |
+| 🎵 **MP3 extraction** | One MP3 per occurrence, cut with ffmpeg, at the bitrate you choose (32-320 kbps). |
+| 📁 **Organized output** | `output/mp3/<search term>/`, with file names that are unique across all videos (important for Anki). |
+| 🔄 **Resume** | Videos that already have a transcript are skipped **without loading the Whisper model**. MP3 files that already exist are skipped too. |
+| 🎞️ **Video formats** | Whatever you list under `video_formats` in `config.yaml` (default: mp4, mkv, avi, mov). |
+| 🌍 **Languages** | German, English, French, Spanish, Italian, Portuguese, Chinese (see below). |
+| 🎨 **Readable output** | Colored boxes that stay aligned. Colors turn off automatically when output is not a terminal or `NO_COLOR` is set. |
+| 📝 **Log file** | Everything shown on screen is also written (without colors) to `logs/goethe.log`. |
 
 ---
 
 ## 📋 Requirements
 
-Before you start, make sure you have:
-
 | Requirement | Version | How to check |
 |-------------|---------|--------------|
-| **Ubuntu** | 22.04 or later | `lsb_release -a` |
-| **Python** | 3.8 or later | `python3 --version` |
-| **FFmpeg** | Latest | `ffmpeg -version` |
-| **Disk Space** | 10+ GB free | `df -h` |
+| **Python** | 3.8 or newer | `python3 --version` |
+| **FFmpeg** | any recent version | `ffmpeg -version` |
+| **Disk space** | the Whisper model is downloaded on first use: small for `tiny`, a few GB for `large-v3` | `df -h` |
+
+Developed and tested on Ubuntu. Other Linux systems and macOS should work as well, but this was not tested.
 
 ---
 
-## 🚀 Quick Installation
-
-### Step 1: Clone the Repository
+## 🚀 Installation
 
 ```bash
+# 1. Get the project
 git clone https://github.com/duman-dp/Goethe.git
 cd Goethe
-```
 
-### Step 2: Install FFmpeg (if not installed)
-
-```bash
+# 2. Install FFmpeg (Ubuntu)
 sudo apt update
 sudo apt install ffmpeg
-```
 
-### Step 3: Setup Python Environment
-
-```bash
-# Create virtual environment
+# 3. Create a virtual environment and install the Python packages
 python3 -m venv venv
-
-# Activate it
 source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-```
 
-### Step 4: Run Auto-Setup
-
-```bash
+# 4. First-time setup: creates folders, config.yaml and sentences.txt
+#    (existing files are never overwritten) and checks your system
 python3 setup.py
 ```
 
-This creates all necessary folders and configuration files automatically.
+## ▶️ Usage
 
-### Step 5: Add Your Content
-
-```bash
-# Add videos to the videos folder
-cp /path/to/your/german_video.mp4 videos/
-
-# Add sentences to sentences.txt
-nano sentences.txt
-```
-
-### Step 6: Start Extracting
+1. Copy your videos into `videos/`.
+2. Write the words and phrases you want into `sentences.txt`, one per line.
+3. Run:
 
 ```bash
 python3 main.py
 ```
 
+Your MP3 files are in `output/mp3/`.
+
+### `sentences.txt`
+
+```
+# Lines starting with # are comments. Empty lines are ignored.
+Ich heiße
+Wie heißt du?
+Woher
+malen
+```
+
+- Single words and phrases can be mixed.
+- A phrase matches only when its words are spoken one after another. Words more than 1.5 seconds apart are not treated as one phrase.
+- Duplicates (same words, different capitalization or punctuation) are ignored with a warning.
+- The file must be saved as UTF-8 (the default in almost every editor).
+
 ---
 
-## 📁 Project Structure
+## 📁 Project structure
 
 ```
 Goethe/
-│
-├── 📁 videos/              ← Put your videos here (.mp4, .mkv, .avi)
-│   └── german_lesson.mp4
-│
-├── 📁 transcripts/         ← Speech-to-text results (JSON)
-│   └── german_lesson.json
-│
-├── 📁 output/              ← All generated files
-│   └── 📁 mp3/             ← Your MP3 library! 🎵
-│       ├── 📁 Ich_habe_keine_Zeit/
-│       │   └── 🎵 Ich_habe_keine_Zeit_001.mp3
-│       ├── 📁 Wie_geht_es_dir/
-│       │   └── 🎵 Wie_geht_es_dir_002.mp3
-│       └── 📁 Das_ist_kein_Problem/
-│           └── 🎵 Das_ist_kein_Problem_003.mp3
-│
-├── 📁 modules/             ← Python modules (don't edit unless you know)
-│   ├── speech_recognition.py
-│   ├── sentence_matcher.py
-│   ├── audio_extractor.py
-│   ├── beautiful_logger.py
-│   └── setup.py
-│
-├── 📄 config.yaml          ← Configuration settings
-├── 📄 sentences.txt        ← Sentences you want to find
-├── 📄 main.py              ← Main program (run this)
-├── 📄 setup.py             ← First-time setup
-├── 📄 requirements.txt     ← Python dependencies
-└── 📄 README.md            ← This file
+├── videos/               ← your videos
+├── transcripts/          ← speech-to-text results (JSON), one per video
+├── output/
+│   ├── all_matches.json  ← every match with video, timestamps and context
+│   └── mp3/              ← your MP3 library
+│       └── Ich_heisse/
+│           └── Ich_heisse__lesson__00h02m15s_7d11d715.mp3
+├── logs/goethe.log
+├── modules/
+│   ├── beautiful_logger.py     terminal output and log file
+│   ├── config.py               loading and checking config.yaml
+│   ├── errors.py               error types with readable messages
+│   ├── speech_recognition.py   video discovery and transcription
+│   ├── sentence_matcher.py     finding words and phrases
+│   ├── audio_extractor.py      cutting MP3 clips, file names
+│   └── setup.py                first-time setup
+├── tests/                ← automatic tests
+├── main.py               ← run this
+├── setup.py              ← first-time setup
+├── config.yaml
+├── sentences.txt
+└── requirements.txt
 ```
+
+### MP3 file names
+
+```
+<search term>__<video name>__<hh>h<mm>m<ss>s_<id>.mp3
+Ich_heisse__Lektion_Ae__00h00m00s_e7c3db2f.mp3
+```
+
+- Umlauts are transliterated: `ä→ae`, `ö→oe`, `ü→ue`, `ß→ss`. Names only contain `A-Z a-z 0-9 _`.
+- The `<id>` is derived from video name, search term and exact time. The same match always gets the same name; matches from different videos never collide.
+- Text without any Latin letters (for example Chinese search terms) gets a name like `term_a1b2c3`, because it cannot be transliterated without extra software.
+- If two different search terms would end up with the same folder name, the second gets `_2`.
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ Configuration (`config.yaml`)
 
-Edit `config.yaml` to customize how Goethe works:
+All settings are optional. Missing values use the defaults shown here. Invalid values stop the program with a message that says what to change. Settings that do not exist (for example `audio.output_format` from older versions) are ignored with a warning.
 
-```yaml
-# ============================================
-# Goethe Configuration
-# ============================================
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `audio.padding_before` | `0.03` | Seconds added before each match (0-5) |
+| `audio.padding_after` | `0.03` | Seconds added after each match (0-5) |
+| `audio.bitrate` | `192` | MP3 quality in kbps (32-320) |
+| `paths.videos` | `./videos` | Where your videos are |
+| `paths.transcripts` | `./transcripts` | Where transcripts are stored |
+| `paths.output` | `./output` | MP3 files go to `<output>/mp3/` |
+| `paths.logs` | `./logs` | Folder for `goethe.log` |
+| `speech.language` | `German` | Language spoken in the videos (see below) |
+| `speech.model_size` | `small` | `tiny`, `base`, `small`, `medium`, `large-v2`, `large-v3` (`large` = `large-v3`) |
+| `speech.device` | `cpu` | `cpu`, `cuda` (NVIDIA GPU) or `auto` |
+| `speech.quiet` | `false` | `true` = less output while transcribing |
+| `matching.fuzzy_threshold` | `100` | `100` = exact only. `50`-`99` = fuzzy fallback (see below) |
+| `video_formats` | `mp4, mkv, avi, mov` | File extensions that are processed (not case-sensitive) |
 
-# Audio Settings
-audio:
-  padding_before: 0.03    # Add 0.03s before each sentence (natural sound)
-  padding_after: 0.03     # Add 0.03s after each sentence
-  bitrate: 192           # MP3 quality: 128, 192, 256
+Relative paths are relative to the project folder.
 
-# Speech Recognition
-speech:
-  model_size: medium       # tiny | small | medium | large (best)
-  language: German       # Language to transcribe
-  device: cpu            # cpu or cuda (GPU)
-  quiet: true            # Less output in terminal
+### Model sizes
 
-# Sentence Matching
-matching:
-  fuzzy_threshold: 60    # 0-100 (lower = more matches, but less accurate)
+| Model | Speed | Accuracy | Memory |
+|-------|-------|----------|--------|
+| `tiny` | fastest | lowest | lowest |
+| `base` | very fast | low | low |
+| `small` *(default)* | fast | good for clear speech | moderate |
+| `medium` | slower | better | high |
+| `large-v2` / `large-v3` | slowest | best | highest |
 
-# Paths
-paths:
-  videos: ./videos
-  transcripts: ./transcripts
-  output: ./output
-  logs: ./logs
-```
+`small` is the default because it works on most laptops. If words are misrecognized, try `medium`; if your computer runs out of memory, try `base` or `tiny`. Models are downloaded the first time they are used.
 
-### Model Size Guide
+### Languages
 
-| Model | Speed | Accuracy | Memory | Best For |
-|-------|-------|----------|--------|----------|
-| **tiny** | 🚀 Fastest | 70% | ~1 GB | Testing, short videos |
-| **small** | ⚡ Fast | 85% | ~2 GB | Daily use  |
-| **medium** | 🐢 Medium | 92% | ~5 GB | Better accuracy (recommended) |
-| **large** | 🐌 Slow | 95% | ~10 GB | Best quality (if you have RAM) |
+| Name | Code |
+|------|------|
+| German | `de` |
+| English | `en` |
+| French | `fr` |
+| Spanish | `es` |
+| Italian | `it` |
+| Portuguese | `pt` |
+| Chinese | `zh` |
 
----
+Write the name (`German`, `german`) or the code (`de`). Any other value stops the program and lists the supported languages. Other Whisper languages can be added to the `LANGUAGES` list in `modules/config.py`.
 
-## 📝 How to Use
-
-### Adding Videos
-
-```bash
-# Copy videos to the videos folder
-cp /path/to/video.mp4 videos/
-
-# Supported formats:
-# .mp4, .mkv, .avi, .mov
-```
-
-### Adding Sentences
-
-Open `sentences.txt`:
-
-```bash
-nano sentences.txt
-```
-
-Add one sentence per line:
-
-```
-Ich habe keine Zeit.
-Wie geht es dir?
-Das ist kein Problem.
-Guten Morgen!
-Hallo, wie heißt du?
-Ich liebe Deutsch.
-Wo ist der Bahnhof?
-Ich verstehe nicht.
-Kannst du mir helfen?
-Was ist das?
-```
-
-**Tip:** Use shorter sentences for better matches!
-
-### Running the Program
-
-```bash
-python3 main.py
-```
-
-### Finding Your MP3s
-
-```bash
-# List all MP3 files
-ls -R output/mp3/
-
-# Play all MP3s
-for f in output/mp3/*/*.mp3; do ffplay -autoexit "$f"; done
-```
+Chinese has no spaces between words, so it is matched character by character. A clip then covers the complete recognized words that contain the characters you searched for.
 
 ---
 
-## 🎨 Example Output
+## 🔎 Matching
+
+**Exact matching (default).** Goethe compares words after lower-casing and removing punctuation. `Wie heißt du?` finds "Wie heißt du", "wie heißt du!" and "wie heisst du".
+
+**Fuzzy fallback (optional).** If you set `matching.fuzzy_threshold` below 100 (for example `80`):
+
+- Goethe first searches exactly, as usual.
+- Only if a term has **no exact match in a video**, it looks in that video for the most similar word sequences with at least that percentage of similarity (using Python's `difflib`). This helps when Whisper misspells a word.
+- Fuzzy matches are marked in `output/all_matches.json` (`"exact": false` and a `score`).
+- Terms shorter than 4 characters are never matched fuzzily.
+- Lower values find more, but also more wrong clips. Start with `80`-`90`.
+
+> ⚠️ **Upgrading note:** older versions shipped `fuzzy_threshold: 60`, which had no effect. In this version it is real. If your `config.yaml` still says `60`, change it to `100` unless you want fuzzy matching.
+
+---
+
+## 🎨 Example output
+
+This is a real run (two short test videos; colors removed):
 
 ```
-  ╔════════════════════════════════════════════════════════════════════╗
-  ║          📚 Goethe - German Sentence Audio Extractor              ║
-  ╚════════════════════════════════════════════════════════════════════╝
+  ┌────────────────────────────────────────────────────────────────────┐
+  │ 🎤 Step 1: Speech Recognition                                      │
+  └────────────────────────────────────────────────────────────────────┘
+  ℹ️ Found 2 video(s)
+  📹 Lektion 2.MOV
+  📹 Lektion_Ä.mp4
+  ℹ️ ⏩ 2 video(s) already transcribed - skipping
 
   ┌────────────────────────────────────────────────────────────────────┐
-  │  🎤 Step 1: Speech Recognition                                    │
+  │ 🔎 Step 2: Sentence Matching                                       │
   └────────────────────────────────────────────────────────────────────┘
-  ℹ️ Found 1 video(s)
-     📹 german_lesson.mp4
-  ℹ️ ⏩ Skipping: german_lesson.mp4 (transcript exists)
+  ℹ️ Searching 13 word(s)/phrase(s) in 2 transcript(s) - exact matches only
 
   ┌────────────────────────────────────────────────────────────────────┐
-  │  🔎 Step 2: Sentence Matching                                     │
+  │ 🔎 Matches: 11 total                                               │
+  ├────────────────────────────────────────────────────────────────────┤
+  │ Ich heiße:           2 clip(s)                                     │
+  │ Wie heißt du:        1 clip(s)                                     │
+  │ Woher kommst du?:    not found                                     │
+  │ ...                                                                │
   └────────────────────────────────────────────────────────────────────┘
-  ℹ️ Searching for 9 sentences
-  ✅ Found 6 matches!
-
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  📝 Matches Found                                              │
-  ├──────────────────────────────────────────────────────────────────┤
-  │  🌟  1. Ich habe keine Zeit                                    │
-  │     ⏱️  2:15 - 2:18  •  Score: 92%                            │
-  │  🌟  2. Wie geht es dir                                        │
-  │     ⏱️  5:30 - 5:33  •  Score: 88%                            │
-  │  🌟  3. Das ist kein Problem                                   │
-  │     ⏱️  8:45 - 8:48  •  Score: 85%                            │
-  └──────────────────────────────────────────────────────────────────┘
 
   ┌────────────────────────────────────────────────────────────────────┐
-  │  🎵 Step 3: Audio Extraction                                     │
+  │ 🎵 Step 3: Audio Extraction                                        │
   └────────────────────────────────────────────────────────────────────┘
-  ✅ Created 6 MP3 files!
-  📁 Saved to: output/mp3/
+  ✅ Created 11 MP3 file(s)
 
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  📊 Summary                                                    │
-  ├──────────────────────────────────────────────────────────────────┤
-  │  🎬 Videos:          1                                        │
-  │  📝 Transcripts:      1                                        │
-  │  🔎 Matches:          6                                        │
-  │  🎵 MP3 Files:        6                                        │
-  │  ⏱️  Total time:      5.2 seconds                             │
-  └──────────────────────────────────────────────────────────────────┘
+  ┌────────────────────────────────────────────────────────────────────┐
+  │ 📊 Summary                                                         │
+  ├────────────────────────────────────────────────────────────────────┤
+  │ Videos:           2                                                │
+  │ Transcribed now:  0                                                │
+  │ Transcripts used: 2                                                │
+  │ Matches:          11                                               │
+  │ MP3 created:      11                                               │
+  │ MP3 skipped:      0                                                │
+  │ MP3 failed:       0                                                │
+  │ Output:           output/mp3                                       │
+  └────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## ❓ Frequently Asked Questions
+## 🔄 Resume and re-running
 
-### How long does it take?
-
-| Video Length | tiny model | small model |
-|--------------|------------|-------------|
-| 1 minute | ~30 seconds | ~1 minute |
-| 5 minutes | ~2 minutes | ~5 minutes |
-| 10 minutes | ~4 minutes | ~10 minutes |
-
-**First time:** Longer (downloads AI model ~1GB)
-
-### Can I use this for other languages?
-
-Yes! Change `language: German` to:
-- `French`, `Spanish`, `Italian`, `Portuguese`
-- `English`, `Chinese`, `Japanese`, `Korean`
-- Any language supported by Whisper
-
-### Where do I get German videos?
-
-- **YouTube**
-- **Deutsche Welle**
-- **Easy German**
-- **Your own recordings**
-- **German movies/TV**
-
-### My laptop is getting hot!
-
-Normal! Speech recognition uses a lot of CPU. To reduce heat:
-1. Use `model_size: tiny` (fastest, coolest)
-2. Process shorter videos (2-3 minutes)
-3. Take breaks between processing
-4. Put laptop on a hard surface for airflow
-
-### No matches found?
-
-Try these fixes:
-1. Lower `fuzzy_threshold` to 50 in config.yaml
-2. Use shorter sentences
-3. Check if sentences actually appear in your video
-4. Use simpler sentences first
-
-### Can I process multiple videos?
-
-Yes! Put all videos in the `videos/` folder. Goethe will process them all.
+- **Transcripts:** a video is transcribed once. If `transcripts/<video name>.json` exists, the video is skipped and Whisper is not even loaded.
+  To transcribe a video again (different language or model, or you replaced the video), delete its transcript file.
+- **Transcript names:** transcripts are named after the video without extension (`lesson.mp4` → `lesson.json`). Two videos with the same name but different extensions (`lesson.mp4` and `lesson.mkv`) cannot both be used; the second is skipped with a warning. Rename one of them.
+- **MP3 files:** clips that already exist are not created again. After changing padding or bitrate, delete `output/mp3/` to create all clips fresh.
+- **Interrupting** with Ctrl+C is safe: finished transcripts are kept and files are written atomically, so no half-written transcript or MP3 is left behind.
+- Transcripts from older Goethe versions are still understood.
 
 ---
 
 ## 🛠️ Troubleshooting
 
-### FFmpeg not found
+### "ffmpeg was not found"
+
+Goethe needs ffmpeg to cut MP3 files.
 
 ```bash
 sudo apt update
 sudo apt install ffmpeg
+ffmpeg -version        # should print a version
 ```
+
+Transcription still works without ffmpeg, but no MP3 files are created.
+
+### The Whisper model does not download / "Could not load Whisper model"
+
+The model is downloaded from Hugging Face the first time it is used.
+
+1. Check your internet connection and that there is enough free disk space.
+2. Run Goethe again; interrupted downloads continue where they stopped.
+3. The warning *"You are sending unauthenticated requests to the HF Hub"* is harmless. Optionally create a free token at https://huggingface.co/settings/tokens and set `export HF_TOKEN="hf_..."` for faster downloads.
+4. Behind a proxy or offline? Download the model on another machine and put its folder path into `speech.model_size`.
+
+### Out of memory / computer freezes while transcribing
+
+Use a smaller model: set `speech.model_size` to `base` or `tiny`. Close other programs, and process fewer or shorter videos at once. (Videos that are already transcribed are skipped, so you can run Goethe repeatedly with a few videos each time.) Speech recognition uses the CPU heavily, so a laptop getting warm is normal.
+
+### No matches found
+
+1. Check the spelling in `sentences.txt`. Look into `transcripts/<video>.json` to see what Whisper actually heard.
+2. Try single words first, then phrases. A phrase only matches if Whisper recognized every word of it.
+3. Make sure `speech.language` matches the language in the videos. If you changed it, delete the old transcripts.
+4. A bigger model (`medium`) usually recognizes more words correctly.
+5. Optionally set `matching.fuzzy_threshold` to `80` (see [Matching](#-matching)).
+
+### "Transcript ... is corrupted"
+
+The transcript file is damaged (for example the computer was switched off while writing in an old version). Delete that file; Goethe will transcribe the video again.
+
+### "No videos found"
+
+Videos must be directly inside `videos/` (not in sub-folders) and have an extension listed in `video_formats`.
+
+### "No such file or directory" / wrong folder
+
+Goethe uses the folder it lives in, no matter where you start it from. Make sure `main.py` and the `modules/` folder are together.
 
 ### Python packages missing
 
 ```bash
 source venv/bin/activate
 pip install -r requirements.txt
-```
-
-### Can't see videos folder
-
-```bash
-# Run setup to create folders
-python3 setup.py
-```
-
-### Hugging Face token warning
-
-```
-Warning: You are sending unauthenticated requests to the HF Hub
-```
-
-This is **normal**. To speed up downloads:
-1. Create free account at: https://huggingface.co/join
-2. Get token: https://huggingface.co/settings/tokens
-3. Set token: `export HF_TOKEN="hf_xxxxxxxxxx"`
-4. Or just wait - it works without token (slower)
-
-### Memory error
-
-```bash
-# Use tiny model
-# Edit config.yaml and set:
-# model_size: tiny
-```
-
-### Error: No such file or directory
-
-```bash
-# Make sure you're in the right folder
-cd ~/Goethe
-
-# Check folder structure
-ls -la
+python3 setup.py        # checks everything and reports what is missing
 ```
 
 ---
 
-## 💡 Pro Tips
+## 🧪 Tests
 
-| Tip | Benefit |
-|-----|---------|
-| Use **short videos** (2-5 min) | Faster processing |
-| Use **tiny model** first | Quick testing |
-| **Clear audio** = better results | Higher accuracy |
-| Add **simple sentences** first | Higher match rate |
-| Lower **threshold to 50** | More matches |
-| Process **one video at a time** | Less memory usage |
-| **Close other apps** | More CPU for processing |
-
----
-
-## 🎯 Complete Example
-
-Here's a full example from start to finish:
+The tests need no extra packages:
 
 ```bash
-# 1. Download a German video (example using yt-dlp)
-yt-dlp "https://www.youtube.com/watch?v=example" -o videos/german_lesson.mp4
-
-# 2. Create sentences.txt
-cat > sentences.txt << EOF
-Ich habe keine Zeit.
-Wie geht es dir?
-Das ist kein Problem.
-Guten Morgen!
-Hallo, wie heißt du?
-Ich liebe Deutsch.
-Wo ist der Bahnhof?
-Ich verstehe nicht.
-Kannst du mir helfen?
-Was ist das?
-EOF
-
-# 3. Activate environment
-source venv/bin/activate
-
-# 4. Run Goethe
-python3 main.py
-
-# 5. Find your MP3s
-ls output/mp3/
-
-# 6. Listen to them!
-ffplay output/mp3/*/*.mp3
+python3 -m unittest discover -s tests -t . -v
 ```
 
+They cover matching (including phrases across segments, umlauts, fuzzy fallback), file names, MP3 extraction (with ffmpeg replaced by a stand-in), configuration, video discovery and terminal alignment.
+
 ---
+
+## ⚠️ Known limitations
+
+- Only video files directly inside `videos/` are processed (no sub-folders).
+- Matching is only as good as the recognized text. Whisper can mishear or skip words, especially with background music or noise.
+- Clip boundaries come from Whisper's word timestamps, which can be off by a fraction of a second. Increase `audio.padding_before` / `audio.padding_after` if clips start or end too abruptly.
+- Fuzzy matching works on spelling similarity, not on sound.
 
 ---
 
 ## 🤝 Contributing
 
-Want to help improve Goethe?
-
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
+3. Run the tests
 4. Submit a pull request
-
-**Areas that need help:**
-- Better documentation
-- More language support
-- GUI interface
-- Batch processing improvements
-- Performance optimizations
-
----
 
 ## 📄 License
 
-MIT License — Free to use, modify, and share!
-
----
+MIT License - free to use, modify, and share.
 
 ## 🙏 Acknowledgements
 
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — Speech recognition
-- [FFmpeg](https://ffmpeg.org/) — Audio extraction
-- [Hugging Face](https://huggingface.co/) — Model hosting
-
----
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) - speech recognition
+- [FFmpeg](https://ffmpeg.org/) - audio extraction
+- [Hugging Face](https://huggingface.co/) - model hosting
 
 ## 📬 Contact
 
 - **GitHub**: [@duman-dp](https://github.com/duman-dp)
-- **Project**: [Goethe](https://github.com/duman-dp/Goethe)
 - **Issues**: [Report a bug](https://github.com/duman-dp/Goethe/issues)
-
----
-
-## ⭐ Support
-
-If Goethe helped you learn German, please star ⭐ this repository!
-
----
-
-**Happy Learning! 🇩🇪🎧**

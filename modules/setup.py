@@ -1,175 +1,174 @@
 #!/usr/bin/env python3
 """
-Setup Module - Creates everything needed for first run
+Setup Module - creates everything needed for the first run.
+
+It never overwrites existing files: config.yaml and sentences.txt are only
+created when they are missing.
 """
 
-import sys
+from __future__ import annotations
+
+import importlib.util
+import shutil
 import subprocess
+import sys
 from pathlib import Path
-from modules.beautiful_logger import logger, Colors
+from typing import Optional
 
-class ProjectSetup:
-    def __init__(self):
-        self.project_root = Path(__file__).parent.parent
-        self.folders = ['videos', 'transcripts', 'output', 'logs', 'output/mp3']
-    
-    def create_folders(self):
-        logger.info("📁 Creating project folders...")
-        for folder in self.folders:
-            folder_path = self.project_root / folder
-            if not folder_path.exists():
-                folder_path.mkdir(parents=True, exist_ok=True)
-                print(f"     {Colors.GREEN}✅ Created:{Colors.RESET} {folder}/")
-            else:
-                print(f"     {Colors.DIM}ℹ️  Exists:{Colors.RESET} {folder}/")
-        print()
-        return True
-    
-    def check_dependencies(self):
-        logger.info("🔍 Checking dependencies...")
-        
-        python_version = sys.version_info
-        if python_version.major < 3 or (python_version.major == 3 and python_version.minor < 8):
-            print(f"     {Colors.RED}❌ Python 3.8+ required (you have {python_version.major}.{python_version.minor}){Colors.RESET}")
-            return False
-        print(f"     {Colors.GREEN}✅ Python:{Colors.RESET} {python_version.major}.{python_version.minor}.{python_version.micro}")
-        
-        try:
-            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
-            if result.returncode == 0:
-                version = result.stdout.split('\n')[0].split(' ')[2]
-                print(f"     {Colors.GREEN}✅ FFmpeg:{Colors.RESET} {version}")
-            else:
-                print(f"     {Colors.YELLOW}⚠️  FFmpeg not found{Colors.RESET}")
-                print(f"     {Colors.DIM}   Install: sudo apt install ffmpeg{Colors.RESET}")
-        except FileNotFoundError:
-            print(f"     {Colors.YELLOW}⚠️  FFmpeg not found{Colors.RESET}")
-            print(f"     {Colors.DIM}   Install: sudo apt install ffmpeg{Colors.RESET}")
-        
-        print()
-        return True
-    
-    def _create_config(self):
-        config_content = """# Goethe - German Sentence Audio Extractor
-# Configuration File
+from modules.beautiful_logger import logger
+from modules.config import (
+    CONFIG_FILENAME,
+    DEFAULT_CONFIG_YAML,
+    PROJECT_ROOT,
+    load_config,
+)
+from modules.errors import ConfigError
 
-# Audio settings
-audio:
-  padding_before: 0.03
-  padding_after: 0.03
-  output_format: mp3
-  bitrate: 192
+SENTENCES_FILENAME = "sentences.txt"
 
-# Paths
-paths:
-  videos: ./videos
-  transcripts: ./transcripts
-  output: ./output
-  logs: ./logs
+DEFAULT_SENTENCES = """\
+# German words and phrases to find in your videos.
+# One entry per line. Lines starting with # are ignored.
+# Single words and whole phrases can be mixed.
 
-# Speech recognition
-speech:
-  language: German
-  model_size: tiny
-  device: cpu
-  quiet: false
-
-# Matching
-matching:
-  fuzzy_threshold: 60
-
-# Video formats
-video_formats:
-  - mp4
-  - mkv
-  - avi
-  - mov
-"""
-        config_path = self.project_root / 'config.yaml'
-        if not config_path.exists():
-            with open(config_path, 'w') as f:
-                f.write(config_content)
-            print(f"     {Colors.GREEN}✅ Created:{Colors.RESET} config.yaml")
-        else:
-            print(f"     {Colors.DIM}ℹ️  Exists:{Colors.RESET} config.yaml")
-        return config_path
-    
-    def _create_sentences(self):
-        sentences_content = """# German Words and Phrases to Search
-# Mix single words AND phrases!
-# Add one per line
-
-# Single words (extract just the word)
+# Single words
 ich
 du
 heiße
 wohne
-hobby
+Hobby
 
-# Phrases (extract just the phrase)
+# Phrases
 Ich heiße
 Wie heißt du
 Woher kommst du
 Ich komme aus
 Ich wohne in
 """
-        sentences_path = self.project_root / 'sentences.txt'
-        if not sentences_path.exists():
-            with open(sentences_path, 'w', encoding='utf-8') as f:
-                f.write(sentences_content)
-            print(f"     {Colors.GREEN}✅ Created:{Colors.RESET} sentences.txt (with examples)")
-        else:
-            print(f"     {Colors.DIM}ℹ️  Exists:{Colors.RESET} sentences.txt")
-        return sentences_path
-    
-    def _check_requirements(self):
-        req_path = self.project_root / 'requirements.txt'
-        if not req_path.exists():
-            req_content = """faster-whisper==1.0.3
-pyyaml==6.0.2
-ffmpeg-python==0.2.0
-pandas==2.2.2
-fuzzywuzzy==0.18.0
-python-Levenshtein==0.25.1
-ctranslate2==4.4.0
-requests==2.32.3
-huggingface_hub==0.24.0
-tokenizers==0.19.1
-tqdm==4.66.4
-"""
-            with open(req_path, 'w') as f:
-                f.write(req_content)
-            print(f"     {Colors.GREEN}✅ Created:{Colors.RESET} requirements.txt")
-        else:
-            print(f"     {Colors.DIM}ℹ️  Exists:{Colors.RESET} requirements.txt")
-        return req_path
-    
-    def run_full_setup(self):
-        print()
-        logger.title("Project Setup")
-        self.create_folders()
-        self._create_config()
-        self._create_sentences()
-        self._check_requirements()
-        self.check_dependencies()
-        self.show_next_steps()
-        return True
-    
-    def show_next_steps(self):
-        print()
-        print("  " + "┌" + "─" * 66 + "┐")
-        print(f"  │ {Colors.BOLD}{Colors.GREEN}✅ Setup Complete!{Colors.RESET}".ljust(68) + "│")
-        print("  " + "├" + "─" * 66 + "┤")
-        print(f"  │  {Colors.CYAN}📹 1. Add videos to:{Colors.RESET} videos/")
-        print(f"  │  {Colors.CYAN}📝 2. Add sentences to:{Colors.RESET} sentences.txt")
-        print(f"  │  {Colors.CYAN}⚙️  3. Edit config:{Colors.RESET} config.yaml (optional)")
-        print(f"  │  {Colors.CYAN}🚀 4. Run:{Colors.RESET} python3 main.py")
-        print("  " + "└" + "─" * 66 + "┘")
-        print()
 
-def run_setup():
-    setup = ProjectSetup()
-    return setup.run_full_setup()
+# (importable module name, pip package name)
+REQUIRED_PACKAGES = (
+    ("yaml", "pyyaml"),
+    ("tqdm", "tqdm"),
+    ("faster_whisper", "faster-whisper"),
+)
+
+
+class ProjectSetup:
+    def __init__(self, root: Optional[Path] = None) -> None:
+        self.root = Path(root) if root is not None else PROJECT_ROOT
+
+    def create_default_files(self) -> None:
+        for filename, content in (
+            (CONFIG_FILENAME, DEFAULT_CONFIG_YAML),
+            (SENTENCES_FILENAME, DEFAULT_SENTENCES),
+        ):
+            path = self.root / filename
+            if path.exists():
+                logger.info(f"Exists:  {filename}")
+            else:
+                path.write_text(content, encoding="utf-8")
+                logger.success(f"Created: {filename}")
+
+    def create_folders(self) -> None:
+        """Create the project folders named in config.yaml."""
+        config = load_config(root=self.root)
+        for message in config.warnings:
+            logger.warning(message)
+        existing = {
+            folder: folder.exists()
+            for folder in (
+                config.paths.videos,
+                config.paths.transcripts,
+                config.paths.output,
+                config.mp3_folder,
+                config.paths.logs,
+            )
+        }
+        config.ensure_folders()
+        for folder, existed in existing.items():
+            label = self._display(folder)
+            if existed:
+                logger.info(f"Exists:  {label}/")
+            else:
+                logger.success(f"Created: {label}/")
+
+    def _display(self, path: Path) -> str:
+        try:
+            return str(path.relative_to(self.root))
+        except ValueError:
+            return str(path)
+
+    def check_dependencies(self) -> bool:
+        """Report problems with Python, ffmpeg and packages. Returns True if everything is fine."""
+        all_ok = True
+
+        version = sys.version_info
+        if (version.major, version.minor) < (3, 8):
+            logger.error(f"Python 3.8 or newer is required (you have {version.major}.{version.minor})")
+            all_ok = False
+        else:
+            logger.success(f"Python {version.major}.{version.minor}.{version.micro}")
+
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            logger.warning("ffmpeg not found - install it with: sudo apt install ffmpeg")
+            all_ok = False
+        else:
+            try:
+                output = subprocess.run(
+                    [ffmpeg, "-version"], capture_output=True, text=True, timeout=20
+                ).stdout.splitlines()
+                words = output[0].split() if output else []
+                logger.success(f"ffmpeg {words[2] if len(words) > 2 else '(version unknown)'}")
+            except (OSError, subprocess.SubprocessError):
+                logger.warning("ffmpeg was found but could not be started")
+                all_ok = False
+
+        missing = []
+        for module_name, pip_name in REQUIRED_PACKAGES:
+            if importlib.util.find_spec(module_name) is None:
+                missing.append(pip_name)
+        if missing:
+            logger.warning(f"Missing Python packages: {', '.join(missing)}")
+            logger.info("Install them with: pip install -r requirements.txt")
+            all_ok = False
+        else:
+            logger.success("Python packages: " + ", ".join(pip for _, pip in REQUIRED_PACKAGES))
+        return all_ok
+
+    def run_full_setup(self) -> bool:
+        logger.title("Project Setup")
+        logger.info("📁 Creating project files and folders...")
+        self.create_default_files()
+        try:
+            self.create_folders()
+        except ConfigError as exc:
+            logger.error(str(exc))
+            return False
+        logger.blank()
+        logger.info("🔍 Checking requirements...")
+        ready = self.check_dependencies()
+        self.show_next_steps(ready)
+        return ready
+
+    def show_next_steps(self, ready: bool = True) -> None:
+        heading = "Setup complete!" if ready else "Setup finished - please fix the warnings above"
+        logger.box(
+            heading,
+            [
+                "1. Add your videos to the videos/ folder",
+                "2. Write the words/phrases you want in sentences.txt",
+                "3. Adjust config.yaml if you like (optional)",
+                "4. Run: python3 main.py",
+            ],
+            emoji="✅" if ready else "⚠️",
+        )
+
+
+def run_setup() -> bool:
+    return ProjectSetup().run_full_setup()
+
 
 if __name__ == "__main__":
-    run_setup()
+    sys.exit(0 if run_setup() else 1)
